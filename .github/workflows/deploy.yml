@@ -20,23 +20,20 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_KEY }}
           script: |
-            # Установка зависимостей (только первый раз)
-            apt-get install -y ffmpeg python3-pip unzip screen 2>/dev/null || true
-            
             # Клонируем или обновляем репозиторий
             if [ -d "/root/matfinder" ]; then
               cd /root/matfinder && git pull
             else
-              git clone https://github.com/${{ github.repository }} /root/matfinder
+              git clone https://github.com/Kusochek-humora/finder_mats /root/matfinder
               cd /root/matfinder
             fi
 
             # Вставляем секреты в main.py
-            sed -i 's|ВАШ_ТОКЕН_БОТА|${{ secrets.TELEGRAM_TOKEN }}|g' main.py
-            sed -i 's|ВАШ_CHAT_ID|${{ secrets.TELEGRAM_CHAT_ID }}|g' main.py
+            sed -i 's|ВАШ_ТОКЕН_БОТА|${{ secrets.TELEGRAM_TOKEN }}|g' /root/matfinder/main.py
+            sed -i 's|ВАШ_CHAT_ID|${{ secrets.TELEGRAM_CHAT_ID }}|g' /root/matfinder/main.py
 
             # Устанавливаем Python зависимости
-            pip3 install -r requirements.txt --quiet
+            pip3 install -r /root/matfinder/requirements.txt --break-system-packages --quiet
 
             # Перезапускаем приложение
             screen -S matfinder -X quit 2>/dev/null || true
