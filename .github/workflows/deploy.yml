@@ -22,7 +22,7 @@ jobs:
           script: |
             # Клонируем или обновляем репозиторий
             if [ -d "/root/matfinder" ]; then
-              cd /root/matfinder && git pull
+              cd /root/matfinder && git reset --hard && git pull
             else
               git clone https://github.com/Kusochek-humora/finder_mats /root/matfinder
             fi
