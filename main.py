@@ -1,24 +1,19 @@
-import whisper
-import subprocess
 import os
-import sys
-import asyncio
-import httpx
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 import tempfile
 import shutil
+import asyncio
+import httpx
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse
+from openai import OpenAI
 
 app = FastAPI()
 
-# ===== НАСТРОЙКИ =====
-TELEGRAM_TOKEN = "ВАШ_ТОКЕН_БОТА"
-TELEGRAM_CHAT_ID = "ВАШ_CHAT_ID"
-# =====================
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 MATY = [
-    # Русский
     "блять", "блядь", "бляд", "блядина", "блядский",
     "хуй", "хуя", "хуе", "хуёв", "похуй", "нахуй", "захуй", "хуйня", "хуйло",
     "пизда", "пизды", "пизде", "пиздец", "пиздёж", "пиздить", "пиздатый",
@@ -27,31 +22,19 @@ MATY = [
     "сука", "суки", "сучка", "сучара",
     "мудак", "мудила", "мудачок",
     "долбоёб", "долбаёб", "долбоеб",
-    "ёбнуть", "ёбнул", "въебать", "разъебать",
-    "пиздануть", "пизданул",
-    "шлюха", "шлюхи",
+    "ёбнуть", "ёбнул", "разъебать",
+    "пизданул", "шлюха", "шлюхи",
     "залупа", "залупин",
-    "ёпта", "епта", "ёптвоюмать",
-    "твоюмать", "твою мать",
-    "пиздёнок", "пиздёныш",
-    "ёбтвоюмать", "ёб твою мать",
-    "курва",
-    "блядство", "блядовать",
+    "ёпта", "епта", "твою мать",
+    "курва", "блядство", "блядовать",
     "уёбок", "уёбище",
-    "пиздобол", "пиздоболить",
-    "хуесос", "хуесоска",
+    "пиздобол", "хуесос", "хуесоска",
     "ёбаная", "ёбаный",
     "пидор", "пидорас", "пидр",
-    "залупоголовый",
     "ёбнутый", "ёбнутая",
-    # Казахский
     "сикти", "сиктир", "сиктір",
-    "быздык", "бізды",
-    "зынданай", "зындан",
-    "шеше", "шешең",
-    "атаң", "атасын",
+    "быздык", "зынданай", "зындан",
     "қаңыр", "қаңырсоқ",
-    "пысык", "пысыксоқ",
     "қотыр", "қотырсоқ",
 ]
 
@@ -61,66 +44,52 @@ def format_time(seconds):
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
-def find_mats_in_text(text):
-    text_lower = text.lower()
-    return [mat for mat in MATY if mat in text_lower]
+def find_mats(text):
+    return [m for m in MATY if m in text.lower()]
 
-async def send_to_telegram(file_path: str, filename: str, count: int):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
-    caption = f"✅ Готово! Найдено фрагментов с матами: {count}"
-    async with httpx.AsyncClient() as client:
-        with open(file_path, "rb") as f:
-            await client.post(url, data={
-                "chat_id": TELEGRAM_CHAT_ID,
-                "caption": caption,
-            }, files={"document": (filename, f, "text/plain")})
-
-def process_audio(audio_path: str, output_path: str):
-    print("Загружаем модель Whisper small...")
-    model = whisper.load_model("small")
-
-    print("Транскрибируем...")
-    result = model.transcribe(
-        audio_path,
-        language="ru",
-        word_timestamps=True,
-        fp16=False  # CPU-совместимо
-    )
-
+def process_audio(audio_path: str) -> list:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    with open(audio_path, "rb") as f:
+        response = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            response_format="verbose_json",
+            timestamp_granularities=["segment"]
+        )
     results = []
-    for segment in result["segments"]:
-        text = segment["text"]
-        found = find_mats_in_text(text)
+    for segment in response.segments:
+        text = segment.text
+        found = find_mats(text)
         if found:
-            entry = {
-                "time_start": format_time(segment["start"]),
-                "time_end": format_time(segment["end"]),
+            results.append({
+                "time_start": format_time(segment.start),
+                "time_end": format_time(segment.end),
                 "text": text.strip(),
                 "maty": found
-            }
-            results.append(entry)
+            })
+    return results
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(f"Найдено фрагментов с матами: {len(results)}\n")
-        f.write("=" * 60 + "\n\n")
+async def send_telegram(results: list, filename: str):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    if not results:
+        text = f"✅ Файл *{filename}*\nМаты не найдены 🎉"
+    else:
+        lines = [f"🔴 Файл *{filename}* — найдено фрагментов: {len(results)}\n"]
         for r in results:
-            f.write(f"[{r['time_start']} - {r['time_end']}]\n")
-            f.write(f"Маты: {', '.join(r['maty'])}\n")
-            f.write(f"Текст: {r['text']}\n")
-            f.write("-" * 40 + "\n")
+            lines.append(f"[{r['time_start']} — {r['time_end']}]")
+            lines.append(f"_{r['text']}_")
+            lines.append(f"⚠️ {', '.join(r['maty'])}\n")
+        text = "\n".join(lines)
 
-    return len(results)
-
-async def handle_job(audio_path: str, original_name: str):
-    output_path = audio_path + "_maty.txt"
-    try:
-        count = await asyncio.to_thread(process_audio, audio_path, output_path)
-        await send_to_telegram(output_path, "maty.txt", count)
-    finally:
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
-        if os.path.exists(output_path):
-            os.remove(output_path)
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    async with httpx.AsyncClient() as client:
+        await client.post(url, json={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": text[:4096],
+            "parse_mode": "Markdown"
+        })
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -128,10 +97,16 @@ async def index():
         return f.read()
 
 @app.post("/upload")
-async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...)):
     suffix = os.path.splitext(file.filename)[1]
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     shutil.copyfileobj(file.file, tmp)
     tmp.close()
-    background_tasks.add_task(handle_job, tmp.name, file.filename)
-    return JSONResponse({"status": "ok", "message": "Файл принят! Результат придёт в Telegram."})
+    try:
+        results = await asyncio.to_thread(process_audio, tmp.name)
+        await send_telegram(results, file.filename)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        os.remove(tmp.name)
+    return JSONResponse({"results": results})
