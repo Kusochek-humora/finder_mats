@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MatFinder</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --accent: #ff2d2d;
+    --accent2: #ff6b00;
+    --text: #f0f0f0;
+    --muted: #555;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    overflow: hidden;
+  }
+
+  /* фоновая сетка */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,45,45,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,45,45,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 560px;
+    position: relative;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(3rem, 12vw, 6rem);
+    letter-spacing: 0.05em;
+    line-height: 1;
+    margin-bottom: 0.2em;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 3rem;
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    background: var(--surface);
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(255,45,45,0.04);
+  }
+
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    display: block;
+  }
+
+  .drop-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .drop-label span {
+    color: var(--accent);
+  }
+
+  .file-name {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    background: rgba(255,45,45,0.08);
+    border-left: 2px solid var(--accent);
+    display: none;
+    text-align: left;
+    word-break: break-all;
+  }
+
+  .btn {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    display: none;
+  }
+
+  .btn:hover { background: #e00; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { background: var(--muted); cursor: not-allowed; }
+
+  .status {
+    margin-top: 1.5rem;
+    font-size: 0.8rem;
+    padding: 1rem;
+    border-radius: 4px;
+    display: none;
+    line-height: 1.6;
+  }
+
+  .status.loading {
+    display: block;
+    background: rgba(255,107,0,0.08);
+    border-left: 2px solid var(--accent2);
+    color: var(--accent2);
+  }
+
+  .status.success {
+    display: block;
+    background: rgba(0,200,100,0.08);
+    border-left: 2px solid #00c864;
+    color: #00c864;
+  }
+
+  .status.error {
+    display: block;
+    background: rgba(255,45,45,0.08);
+    border-left: 2px solid var(--accent);
+    color: var(--accent);
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--accent2);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .formats {
+    margin-top: 2rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .fmt {
+    font-size: 0.65rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">MatFinder</div>
+  <div class="subtitle">// Детектор нецензурной лексики</div>
+
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".mp3,.mp4,.wav,.mov,.m4a,.ogg">
+    <span class="drop-icon">🎙️</span>
+    <div class="drop-label">
+      Перетащи файл сюда или <span>выбери вручную</span><br>
+      Результат придёт в Telegram
+    </div>
+  </div>
+
+  <div class="file-name" id="fileName"></div>
+  <button class="btn" id="uploadBtn" onclick="upload()">Запустить анализ</button>
+
+  <div class="status" id="status"></div>
+
+  <div class="formats">
+    <span class="fmt">mp3</span>
+    <span class="fmt">mp4</span>
+    <span class="fmt">wav</span>
+    <span class="fmt">mov</span>
+    <span class="fmt">m4a</span>
+    <span class="fmt">ogg</span>
+  </div>
+</div>
+
+<script>
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileName = document.getElementById('fileName');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const status = document.getElementById('status');
+
+  let selectedFile = null;
+
+  fileInput.addEventListener('change', e => {
+    if (e.target.files[0]) selectFile(e.target.files[0]);
+  });
+
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
+  });
+
+  function selectFile(file) {
+    selectedFile = file;
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    fileName.textContent = `📎 ${file.name}  (${mb} МБ)`;
+    fileName.style.display = 'block';
+    uploadBtn.style.display = 'block';
+    status.className = 'status';
+    status.style.display = 'none';
+  }
+
+  async function upload() {
+    if (!selectedFile) return;
+
+    uploadBtn.disabled = true;
+    status.className = 'status loading';
+    status.innerHTML = '<span class="spinner"></span> Файл отправлен на сервер. Whisper обрабатывает аудио — это займёт несколько минут. Результат придёт в Telegram.';
+
+    const form = new FormData();
+    form.append('file', selectedFile);
+
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (res.ok) {
+        status.className = 'status success';
+        status.innerHTML = '✅ ' + data.message;
+      } else {
+        throw new Error(data.detail || 'Ошибка сервера');
+      }
+    } catch (e) {
+      status.className = 'status error';
+      status.innerHTML = '❌ ' + e.message;
+    } finally {
+      uploadBtn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
